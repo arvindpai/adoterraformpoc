@@ -9,9 +9,9 @@ terraform {
 provider "google" {
   credentials = file("credentials.json")
 
-  project = "xxxxxxx"
-  region  = "us-west1"
-  zone    = "us-west1-b"
+  project = var.project_id
+  region  = var.region
+  zone    = var.zone
 }
 
 resource "google_compute_network" "vpc_network" {

@@ -1,0 +1,110 @@
+# aws scp pipeline
+variables:
+- name: agentPool
+  value: 'Azure Pipelines'
+- name: variableFile-dev
+  value: 'adotf.tfvars.json'
+- name: workingDir
+  value: '30049-aws-ou-scp-live/workloads/'
+- name: destroySwitch
+  value: 'off'
+
+trigger: 
+- none  
+
+resources:
+  pipelines:
+  - pipeline: mySourcePipeline
+    source: 'ado-terraform-pipeline-dev'
+    trigger: 
+      branches:
+      - main 
+
+stages:
+- stage: dev_terraform_build 
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'development'))
+  pool: 
+    name: $(agentPool)
+  jobs:
+  - job: checkoutRepo
+    steps:
+    - checkout: self
+    - checkout: 
+    
+    - script: |
+        echo 'stage terraform build!'
+      displayName: 'building terraform in stage environment'
+    
+    - script: |
+        terraform -version
+      displayName: 'terraform version'
+
+    - task: Bash@3
+      displayName: 'Set Environment Variables'
+      inputs:
+        targetType: 'inline'
+        
+        script: |
+          #!/bin/bash
+          set +x
+          
+          unset BackendKey
+          unset BackendBucket
+          
+          var_file=$1
+          
+          var_file_path="./$(variableFile-dev)"
+          
+          backendKey=$(cat ${var_file_path} | grep "backend_key" | awk '{print $2}' | cut -d '"' -f 2)
+          backendBucket=$(cat ${var_file_path} | grep "backend_bucket" | awk '{print $2}' | cut -d '"' -f 2)
+
+          echo "##vso[task.setvariable variable=backendKey]$backendKey"
+          echo "##vso[task.setvariable variable=backendBucket]$backendBucket"
+
+        workingDirectory: '$(Build.SourcesDirectory)/$(workingDir)/vars/'
+
+    - script: |
+        terraform init -backend-config=key=$BACKENDKEY -backend-config=bucket=$BACKENDBUCKET
+      displayName: 'terraform init '
+      workingDirectory: '$(Build.SourcesDirectory)/$(workingDir)'
+
+    # - script: |  
+    #     terraform destroy -auto-approve -var-file="vars/$(variableFile-dev)"
+    #   displayName: 'terraform destroy if switch is on'
+    #   workingDirectory: '$(Build.SourcesDirectory)/$(workingDir)'
+    #   condition: and(succeeded(), eq(variables['destroySwitch'], 'on'))
+
+    - script: |
+
+        terraform plan -var-file="vars/$(variableFile-dev)" -out="./out_plan_file" -input=false -detailed-exitcode > /dev/null 
+        OUT=$?
+
+        terraform show ./out_plan_file > outfile
+
+        if [ $OUT -eq 0 ];then
+        echo '##vso[task.setvariable variable=terraform_plan_exitcode]0'
+        echo "No changes. Infrastructure is up-to-date!"
+        elif [ $OUT -eq 1 ];then
+        echo '##vso[task.setvariable variable=terraform_plan_exitcode]1'
+        echo "Terraform planned has failed!"
+        exit 1
+        elif [ $OUT -eq 2 ];then
+        echo '##vso[task.setvariable variable=terraform_plan_exitcode]2'
+        echo "Changes have been noticed!"
+        else
+        echo "Terraform planned has failed!"
+        exit 1
+        fi
+      displayName: 'Terraform Plan'
+      workingDirectory: '$(Build.SourcesDirectory)/$(workingDir)'
+      condition: and(succeeded(), eq(variables['destroySwitch'], 'off'))
+  
+    # - script: |  
+    #     terraform apply -auto-approve "./out_plan_file"
+   
+    #   displayName: 'Terraform apply'
+    #   workingDirectory: '$(Build.SourcesDirectory)/$(workingDir)'
+    #   condition: and(succeeded(), eq(variables['terraform_plan_exitcode'], '2'), eq(variables['destroySwitch'], 'off'))
+
+
+  

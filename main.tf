@@ -9,7 +9,7 @@ terraform {
 provider "google" {
   credentials = file("credentials.json")
 
-  project = "storied-cider-324120"
+  project = "xxxxxxx"
   region  = "us-west1"
   zone    = "us-west1-b"
 }

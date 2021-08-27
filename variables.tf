@@ -9,3 +9,5 @@ variable "zone" {
 variable "region" {
   description = "Region to deploy the resources. Should be in the same region as the zone."
 }
+
+
